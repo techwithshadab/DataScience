@@ -1,0 +1,33 @@
+"Name"	"Transmission"	"Cylinders"	"Fuel.Economy"
+"Mazda RX4"	"Manual"	6	21
+"Mazda RX4 Wag"	"Manual"	6	21
+"Datsun 710"	"Manual"	4	22.8
+"Hornet 4 Drive"	"Automatic"	6	21.4
+"Hornet Sport"	"Automatic"	8	18.7
+"Valiant"	"Automatic"	6	18.1
+"Duster 360"	"Automatic"	8	14.3
+"Merc 240D"	"Automatic"	4	24.4
+"Merc 230"	"Automatic"	4	22.8
+"Merc 280"	"Automatic"	6	19.2
+"Merc 280C"	"Automatic"	6	17.8
+"Merc 450SE"	"Automatic"	8	16.4
+"Merc 450SL"	"Automatic"	8	17.3
+"Merc 450SLC"	"Automatic"	8	15.2
+"Cadillac Fleetwood"	"Automatic"	8	10.4
+"Lincoln Continental"	"Automatic"	8	10.4
+"Chrysler Imperial"	"Automatic"	8	14.7
+"Fiat 128"	"Manual"	4	32.4
+"Honda Civic"	"Manual"	4	30.4
+"Toyota Corolla"	"Manual"	4	33.9
+"Toyota Corona"	"Automatic"	4	21.5
+"Dodge Challenger"	"Automatic"	8	15.5
+"AMC Javelin"	"Automatic"	8	15.2
+"Camaro Z28"	"Automatic"	8	13.3
+"Pontiac Firebird"	"Automatic"	8	19.2
+"Fiat X1-9"	"Manual"	4	27.3
+"Porsche 914-2"	"Manual"	4	26
+"Lotus Europa"	"Manual"	4	30.4
+"Ford Pantera L"	"Manual"	8	15.8
+"Ferrari Dino"	"Manual"	6	19.7
+"Maserati Bora"	"Manual"	8	15
+"Volvo 142E"	"Manual"	4	21.4
