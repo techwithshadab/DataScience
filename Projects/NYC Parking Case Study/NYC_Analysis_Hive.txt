@@ -1,0 +1,249 @@
+-- Submitted By: Shadab Hussain
+
+-- Adding the Jar file to set the environ
+ADD JAR /opt/cloudera/parcels/CDH/lib/hive/lib/hive-hcatalog-core-1.1.0-cdh5.11.2.jar;
+
+-- dropping any existing table
+drop table if exists Nyc_yellow_taxi_data;
+
+-- checking if all existing table has been deleted: no such object should exist
+select * from Nyc_yellow_taxi_data;
+
+-- creating table from the data file given 
+create external table if not exists Nyc_yellow_taxi_data(VendorID int, tpep_pickup_datetime timestamp, tpep_dropoff_datetime timestamp, passenger_count int, trip_distance double, Ratecodeid int, store_and_fwd_flag varchar(2),
+PULocationid int, DOLocationid int, payment_type int, fare_amount double, extra double, mta_tax double, tip_amount double, tolls_amount int, improvement_surcharge double,
+total_amount double)
+ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
+with serdeproperties  ('paths' = '')
+LOCATION '/common_folder/nyc_taxi_data/'
+TBLPROPERTIES ( 'skip.header.line.count' = '1');
+
+-- checking the count of data loaded	
+select count(*) from Nyc_yellow_taxi_data;
+
+-- IMPORTANT: BEFORE PARTITIONING ANY TABLE, MAKE SURE YOU RUN THESE COMMANDS 
+SET hive.exec.max.dynamic.partitions=100000;
+SET hive.exec.max.dynamic.partitions.pernode=100000;
+
+-- drop any existing partition table 
+drop table Nyc_yellow_taxi_par_mnth_yr;
+
+-- create partition table
+create external table if not exists Nyc_yellow_taxi_par_mnth_yr(
+VendorID int, tpep_pickup_datetime timestamp, tpep_dropoff_datetime timestamp, passenger_count int, trip_distance double, Ratecodeid int,
+store_and_fwd_flag varchar(2), PULocationid int, DOLocationid int, payment_type int, fare_amount double, extra double, mta_tax double, tip_amount double, tolls_amount int,
+improvement_surcharge double, total_amount double)
+partitioned by (mnth int,yr int)
+location '/user/hive/warehouse/Nyc_yellow_taxi_par_mnth_yr';
+
+-- setting properties related to partition:
+SET hive.exec.dynamic.partition.mode=nonstrict;
+SET hive.exec.dynamic.partition = true;
+
+-- populating data into partition table from non patition table
+insert overwrite table Nyc_yellow_taxi_par_mnth_yr partition (mnth,yr)
+select VendorID, tpep_pickup_datetime, tpep_dropoff_datetime, passenger_count,trip_distance,Ratecodeid ,store_and_fwd_flag, PULocationid, DOLocationid, payment_type, fare_amount, extra, mta_tax, tip_amount, tolls_amount, improvement_surcharge, total_amount, substr(tpep_pickup_datetime ,6,2) mnth, substr(tpep_pickup_datetime ,1,4) yr from Nyc_yellow_taxi_data;
+
+-- checking partition table count:
+select count(*) from Nyc_yellow_taxi_par_mnth_yr;
+
+-- 1
+-- How many records has each TPEP provider provided?
+-- Write a query that summarises the number of records of each provider.
+
+vendorid	cnt
+-----------------
+2	647169	
+1	527386	
+
+-- Creative Mobile Technologies, LLC (vendorid=1) has provided 527386 records and
+-- VeriFone Inc (vendorid=2) has provided 647169 records.
+
+-- 2
+-- data quality issues
+-- (I)although it is said data os only for 2017 and for dec and nov but few records have 
+-- datetimestamp of 2003, 2008,2009.2018 as well as of other months
+-- (a) data having month other than nov and dec
+SELECT mnth,count(*) cnt from Nyc_yellow_taxi_par_mnth_yr where mnth not in (11,12) group by mnth;
+
+mnth	cnt
+-------------
+1	6
+10	6	
+
+-- (b) data having year other than 2017 
+SELECT yr,count(*) cnt from Nyc_yellow_taxi_par_mnth_yrwhere yr <>2017 group by yr;
+
+yr	   cnt
+------------	
+2003	1	
+2008	2	
+2009	1	
+2018	4
+
+-- (II)data issue
+-- no of passengers as 0 which is not possible, 6824 trips with 0 as number of psssengers
+SELECT passenger_count,count(1) no_of_trips  FROM Nyc_yellow_taxi_par_mnth_yr where yr=2017 and mnth in (11,12) and passenger_count = 0 group by passenger_count;
+
+passenger_count	 no_of_trips	
+----------------------------
+0	                6824	
+
+-- (III)data issue
+-- few records has trip_distance = 0 which is not correct, this means that these records are  erroneous.
+SELECT trip_distance,count(1) no_of_trips  FROM Nyc_yellow_taxi_par_mnth_yr where yr=2017 and mnth in (11,12) and trip_distance = 0 group by trip_distance;
+
+trip_distance	no_of_trips
+----------------------------
+0	                7401
+
+
+-- (IV)data issue
+-- few records has fare_amount = 0 which is not correct, this means that these records are  erroneous.
+SELECT fare_amount,count(1) no_of_trips  FROM Nyc_yellow_taxi_par_mnth_yr where yr=2017 and mnth in (11,12) and fare_amount = 0 group by fare_amount;
+
+fare_amount   	no_of_trips
+----------------------------
+0	             312
+
+--3 which vendor is doing a bad job in providing the records?
+SELECT distinct(vendorid) from Nyc_yellow_taxi_par_mnth_yr where mnth not in (11,12) or yr <>2017;
+
+vendorid
+---------	
+2		   
+
+-- VeriFone Inc (vendorid=2) is doing a bad job in providing the records.
+-- Creating the clean ORC table.
+create external table if not exists Nyc_yellow_taxi_par_mnth_yr_orc(VendorID int, tpep_pickup_datetime timestamp, tpep_dropoff_datetime timestamp, passenger_count int, trip_distance double, Ratecodeid int, store_and_fwd_flag varchar(2), PULocationid int, DOLocationid int, payment_type int, fare_amount double, extra double, mta_tax double, tip_amount double, tolls_amount int, improvement_surcharge double, total_amount double)
+partitioned by (mnth int,yr int)
+stored as orc location '/user/hive/warehouse/Nyc_yellow_taxi_par_mnth_yr_orc'
+tblproperties ("orc.compress"="SNAPPY");		   
+ 
+	
+-- populating data into partition table from non patition table
+insert overwrite table Nyc_yellow_taxi_par_mnth_yr_orc partition (mnth,yr)
+select VendorID,tpep_pickup_datetime, tpep_dropoff_datetime, passenger_count,trip_distance,Ratecodeid ,store_and_fwd_flag, PULocationid, DOLocationid, payment_type, fare_amount, extra, mta_tax, tip_amount, tolls_amount, improvement_surcharge, total_amount, substr(tpep_pickup_datetime ,6,2) mnth, substr(tpep_pickup_datetime ,1,4) yr from Nyc_yellow_taxi_par_mnth_yr where passenger_count > 0 and fare_amount > 0 and trip_distance > 0 mnth in (11,12) and yr = 2017;			   
+
+
+-- checking count of ORC table:
+select count(*) from Nyc_yellow_taxi_par_mnth_yr_orc; --1159813
+
+
+
+-----------------ANALYSIS 1-----------------
+
+--1. Compare the overall average fare per trip for November and December.
+--In December the average fare amount is 12.851 and in November the averege fare amount is 13.0621
+SELECT round(avg(fare_amount),4) avg_amt, mnth FROM Nyc_yellow_taxi_par_mnth_yr_orc group by mnth;
+
+avg_fare_amt  mnth
+-----------------	
+12.851	      12	
+13.0621	      11	
+
+
+--2. Explore the ‘number of passengers per trip’ - how many trips are made by each level of ‘Passenger_count’? Do most people travel solo or with other people?
+-- yes solo travellers are famous
+SELECT passenger_count,count(*) number_of_trips FROM Nyc_yellow_taxi_par_mnth_yr_orc group by passenger_count order by number_of_trips desc;
+
+passenger_count	  number_of_trips
+-----------------------------------
+	1	          821305
+	2	          175853
+	5	          54342
+	3	          50459
+	6	          33037
+	4	          24814
+	7	          3
+  
+
+--3. Which is the most preferred mode of payment?
+-- most preferred payment type is 1= Credit card
+SELECT payment_type, count(*) number_of_trips FROM Nyc_yellow_taxi_par_mnth_yr_orc group by payment_type order by number_of_trips desc;
+
+payment_type	number_of_trips
+---------------------------------
+1	          782808
+2	          370894
+3	          4783
+4	          1328
+ 
+ 
+--4. Average tip paid? Compare the average tip with the 25th, 50th and 75th percentiles 
+select avg(tip_amount) avg_tip, percentile(cast(tip_amount as bigint),0.25) twenty_five, percentile(cast(tip_amount as bigint),0.75) seventy_five, percentile(cast(tip_amount as bigint),0.50) fifty from Nyc_yellow_taxi_par_mnth_yr_orc;
+-- avg trip paid is 1.848 ,25th percentile is 0,50th percentile is 1,75th percentile is 2.
+
+avg_tip	    twenty_five	   seventy_five	      fifty
+-----------------------------------------------------
+1.848        	0	           2	           1
+
+
+--5. Explore the ‘Extra’ (charge) variable - what fraction of total trips have an extra charge is levied?
+select sum(if(extra>0,1,0)) as trips_with_extra_field, sum(if(extra>0,1,0))/count(*) as fraction_of_extra from Nyc_yellow_taxi_par_mnth_yr_orc;
+-- Around 0.46 of total trips extra has been levied
+
+trips_with_extra_field    	fraction_of_extra
+---------------------------------------------------
+537406	                    0.4633557306220917
+
+
+
+-----------------ANALYSIS 2-----------------
+--1. What is the correlation between the number of passengers on any given trip, and the tip paid per trip? Do multiple travellers tip more compared to solo travellers?
+--Negative correlation is a relationship between two variables in which one variable increases as the other decreases, and vice versa meaning as travellers increase tip amount decsreases
+select corr(passenger_count,tip_amount) as cor from Nyc_yellow_taxi_par_mnth_yr_orc;
+
+	cor
+-----------------------
+-0.004994909849481773
+
+
+--2. Calculate the percentage share of each bucket (i.e., the fraction of trips falling in each bucket).
+with temp1 as(select count(*) as cnt from
+(SELECT vendorid, tip_amount,
+CASE
+ WHEN tip_amount >= 0 and tip_amount < 5 THEN "bucket1" 
+ WHEN tip_amount >= 5 and tip_amount < 10 THEN "bucket2" 
+ WHEN tip_amount >= 10 and tip_amount < 15 THEN "bucket3" 
+ WHEN tip_amount >= 15 and tip_amount < 20 THEN "bucket4" 
+ WHEN tip_amount >= 20  THEN "bucket5" 
+END as bucket FROM Nyc_yellow_taxi_par_mnth_yr_orc)tmp where bucket is not null), tmp1 as (select count(*) cnt,bucket from
+(SELECT vendorid,
+CASE
+ WHEN tip_amount >= 0 and tip_amount < 5 THEN "bucket1" 
+ WHEN tip_amount >= 5 and tip_amount < 10 THEN "bucket2" 
+ WHEN tip_amount >= 10 and tip_amount < 15 THEN "bucket3" 
+ WHEN tip_amount >= 15 and tip_amount < 20 THEN "bucket4" 
+ WHEN tip_amount >= 20  THEN "bucket5" 
+END as bucket FROM Nyc_yellow_taxi_par_mnth_yr_orc) tmp3 group by bucket having bucket is not null) select tmp1.cnt,tmp1.bucket,(tmp1.cnt/temp1.cnt) * 100 as pct from tmp1,temp1;
+
+number_of_trips    	tmp1.bucket	           fraction_of_trips
+----------------------------------------------------------------
+1069097	            bucket1[0-5)           92.17839427562892
+65615	            bucket2[5-10)	       5.657377525514889
+21410	            bucket3[10-15)	       1.845987241046617
+2627	            bucket4	[15-20)        0.22650203093084834
+1064	            bucket5(>=20)          0.09173892687872959
+
+
+--3. Which month has a greater average ‘speed’ - November or December?
+-- December  month (11.095 mph) has greater avg speed
+select round(avg(trip_distance/((unix_timestamp(tpep_dropoff_datetime)- unix_timestamp(tpep_pickup_datetime))/3600)),4) as speed_in_mph, mnth from nyc_yellow_taxi_par_mnth_yr_orc group by mnth order by speed_in_mph desc;
+
+speed_in_mph	mnth
+----------------------
+11.095	        12
+10.998	        11
+
+
+--4. Analyse the average speed of the most happening days of the year, i.e. 31st December (New year’s eve) and 25th December (Christmas) and compare it with the overall average
+-- to compare the avg speeds took union here so that all 3 required avg sppeds can be seen easily 
+-- 31st December  (13.2444) and 25th December (15.2651) has greater averege speed than whole year (11.047).
+select day(tpep_pickup_datetime) as time_of_trip, round(avg(trip_distance/((unix_timestamp(tpep_dropoff_datetime) - unix_timestamp(tpep_pickup_datetime))/3600)),4) as avg_speed from nyc_yellow_taxi_par_mnth_yr_orc where (tpep_pickup_datetime like'%2017-12-25%' or tpep_pickup_datetime like'%2017-12-31%') group by day(tpep_pickup_datetime) union all select yr as time_of_trip,round(avg(trip_distance/((unix_timestamp(tpep_dropoff_datetime) - unix_timestamp(tpep_pickup_datetime))/3600)),4) as avg_speed from nyc_yellow_taxi_par_mnth_yr_orc group by yr;
+
+_u1.time_of_trip	_u1.avg_speed
+------------------------------------
+25	                15.2651
+31	                13.2444
+2017	            11.047
